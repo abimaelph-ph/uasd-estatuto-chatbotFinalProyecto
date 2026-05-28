@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Chatbot Web Inteligente para Consulta del Estatuto Orgánico de la UASD
 
 Este proyecto es una aplicación web tipo chatbot que permite consultar el Estatuto Orgánico de la Universidad Autónoma de Santo Domingo usando Node.js, Express, JavaScript e inteligencia artificial.
@@ -60,3 +61,6 @@ http://localhost:3000
 ## Nota importante
 
 Si no colocas una API key, el sistema funcionará en modo básico: buscará fragmentos del Estatuto y mostrará una respuesta aproximada. Para respuestas inteligentes completas, configura la clave de OpenAI en el archivo `.env`.
+=======
+# uasd-estatuto-chatbotFinalProyecto
+>>>>>>> 270c3679deeb447d7b70f6dbc6affe1ac7a8622b
