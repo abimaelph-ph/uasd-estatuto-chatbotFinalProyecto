@@ -1,16 +1,13 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import axios from "axios";
-import pdf from "pdf-parse";
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { articles, questionMap } from "./data/knowledgeBase.js";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const ESTATUTO_URL =
-  "https://postgrado.uasd.edu.do/wp-content/uploads/2024/06/ESTATUTO-ORGANICO-UASD.pdf";
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
@@ -19,140 +16,118 @@ app.use(express.static("public"));
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 
 const model = genAI.getGenerativeModel({
-  model: "gemini-2.5-flash"
+  model: "gemini-2.5-flash-lite"
 });
 
-let estatutoText = "";
-let chunks = [];
-
-const suggestedQuestions = [
+const mainQuestions = [
   "¿Qué es la Universidad Autónoma de Santo Domingo?",
   "¿Cuál es la misión de la UASD?",
-  "¿Cuáles son los fines de la Universidad?",
   "¿Cuáles son las funciones fundamentales de la UASD?",
-  "¿Qué establece el Estatuto sobre la autonomía universitaria?",
-  "¿Cuáles son los principios que orientan a la Universidad?",
-  "¿Cómo está organizada la Universidad?",
-  "¿Cuáles son los organismos de gobierno de la UASD?",
-  "¿Qué es el Claustro Mayor?",
   "¿Qué es el Consejo Universitario?",
-  "¿Quiénes integran el Consejo Universitario?",
   "¿Cuáles son las funciones del Rector?",
-  "¿Qué establece el Estatuto sobre los estudiantes?",
-  "¿Cuáles son los derechos de los estudiantes?",
-  "¿Cuáles son los deberes de los estudiantes?",
-  "¿Qué establece el Estatuto sobre el régimen disciplinario?"
+  "¿Cuáles son los derechos de los estudiantes?"
 ];
 
-function normalizeText(text) {
+const allQuestions = questionMap.map((item) => item.question);
+
+function normalize(text) {
   return text
-    .replace(/\s+/g, " ")
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
-    .trim();
-}
-
-function splitIntoChunks(text, size = 1400, overlap = 220) {
-  const clean = normalizeText(text);
-  const result = [];
-  let start = 0;
-
-  while (start < clean.length) {
-    const end = Math.min(start + size, clean.length);
-    result.push(clean.slice(start, end));
-    start += size - overlap;
-  }
-
-  return result;
-}
-
-function scoreChunk(question, chunk) {
-  const words = question
     .toLowerCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-zñ0-9\s]/gi, " ")
-    .split(/\s+/)
-    .filter((word) => word.length > 3);
-
-  const cleanChunk = chunk
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "");
-
-  return words.reduce(
-    (score, word) => score + (cleanChunk.includes(word) ? 1 : 0),
-    0
-  );
+    .replace(/[^a-z0-9ñ\s]/gi, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
-function getRelevantContext(question, limit = 3) {
-  const scoredChunks = chunks
-    .map((chunk, index) => ({
-      index,
-      chunk,
-      score: scoreChunk(question, chunk)
+function findDirectQuestion(question) {
+  const cleanQuestion = normalize(question);
+
+  return questionMap.find((item) => {
+    const q = normalize(item.question);
+    if (cleanQuestion === q) return true;
+    return item.keywords.some((keyword) => cleanQuestion.includes(normalize(keyword)));
+  });
+}
+
+function scoreArticle(question, article) {
+  const q = normalize(question);
+  const content = normalize(article.contenido);
+  const words = q
+    .split(" ")
+    .filter((word) => word.length > 3)
+    .filter((word) => !["cuales", "sobre", "establece", "universidad", "uasd", "santo", "domingo"].includes(word));
+
+  let score = 0;
+
+  for (const word of words) {
+    if (content.includes(word)) score += 2;
+  }
+
+  if (q.includes("mision") && content.includes("es mision de la universidad")) score += 25;
+  if (q.includes("vision") && content.includes("vision")) score += 18;
+  if (q.includes("valores") && content.includes("valores")) score += 18;
+  if (q.includes("rector") && content.includes("son atribuciones del rector")) score += 25;
+  if (q.includes("consejo universitario") && content.includes("consejo universitario")) score += 20;
+  if (q.includes("claustro mayor") && content.includes("claustro mayor")) score += 20;
+  if (q.includes("claustro menor") && content.includes("claustro menor")) score += 20;
+  if (q.includes("facultades") && content.includes("las facultades son")) score += 20;
+  if (q.includes("escuelas") && content.includes("las escuelas son")) score += 20;
+  if (q.includes("estudiantes") && content.includes("estudiantes")) score += 12;
+  if (q.includes("docente") && content.includes("personal academico")) score += 12;
+  if (q.includes("investigacion") && content.includes("investigacion")) score += 12;
+  if (q.includes("extension") && content.includes("extension")) score += 12;
+  if (q.includes("postgrado") || q.includes("posgrado")) {
+    if (content.includes("posgrado") || content.includes("postgrado")) score += 12;
+  }
+  if (q.includes("patrimonio") && content.includes("patrimonio")) score += 18;
+  if (q.includes("regimen disciplinario") && content.includes("regimen disciplinario")) score += 18;
+
+  return score;
+}
+
+function getRelevantContext(question, limit = 6) {
+  const direct = findDirectQuestion(question);
+  let selected = [];
+
+  if (direct && direct.articles.length > 0) {
+    selected = articles.filter((article) => direct.articles.includes(String(article.articulo)));
+  }
+
+  const ranked = articles
+    .map((article) => ({
+      ...article,
+      score: scoreArticle(question, article)
     }))
+    .filter((article) => article.score > 0)
     .sort((a, b) => b.score - a.score);
 
-  const bestScore = scoredChunks[0]?.score || 0;
-
-  if (bestScore === 0) {
-    return "";
+  for (const item of ranked) {
+    if (!selected.some((article) => article.articulo === item.articulo)) {
+      selected.push(item);
+    }
+    if (selected.length >= limit) break;
   }
 
-  return scoredChunks
-    .filter((item) => item.score >= 1)
+  return selected
     .slice(0, limit)
-    .map((item) => `Fragmento ${item.index + 1}: ${item.chunk}`)
-    .join("\n\n");
-}
-
-async function loadEstatuto() {
-  try {
-    console.log("Descargando Estatuto Orgánico de la UASD...");
-
-    const response = await axios.get(ESTATUTO_URL, {
-      responseType: "arraybuffer"
-    });
-
-    const data = await pdf(response.data);
-    estatutoText = normalizeText(data.text);
-    chunks = splitIntoChunks(estatutoText);
-
-    console.log(
-      `Estatuto cargado correctamente. Fragmentos creados: ${chunks.length}`
-    );
-  } catch (error) {
-    console.error("No se pudo cargar el PDF oficial:", error.message);
-    estatutoText = "";
-    chunks = [];
-  }
-}
-
-function fallbackAnswer(context) {
-  if (!context || context.length < 100) {
-    return "No encontré información suficiente en el Estatuto Orgánico para responder esa pregunta.";
-  }
-
-  const preview = context
-    .replace(/Fragmento \d+:/g, "")
-    .slice(0, 700)
-    .trim();
-
-  return `Según la información encontrada en el Estatuto Orgánico de la UASD, esta consulta se relaciona con lo siguiente: ${preview}...`;
+    .map((item) => `ARTÍCULO ${item.articulo}\n${item.contenido}`)
+    .join("\n\n---\n\n");
 }
 
 app.get("/api/status", (req, res) => {
   res.json({
-    ready: chunks.length > 0,
-    chunks: chunks.length,
-    source: ESTATUTO_URL
+    ready: articles.length > 0,
+    articles: articles.length,
+    questions: allQuestions.length
   });
 });
 
 app.get("/api/questions", (req, res) => {
-  res.json({ questions: suggestedQuestions });
+  res.json({
+    main: mainQuestions,
+    all: allQuestions
+  });
 });
 
 app.post("/api/chat", async (req, res) => {
@@ -161,24 +136,23 @@ app.post("/api/chat", async (req, res) => {
 
     if (!message || typeof message !== "string" || message.trim().length < 2) {
       return res.status(400).json({
-        error: "Escribe una pregunta válida."
+        answer: "Escribe una pregunta válida."
       });
     }
 
     const question = message.trim();
-    const context = getRelevantContext(question, 3);
+    const context = getRelevantContext(question, 6);
 
-    if (!context || context.length < 50) {
+    if (!context || context.length < 80) {
       return res.json({
-        answer:
-          "No encontré información suficiente en el Estatuto Orgánico para responder esa pregunta.",
+        answer: "No encontré información suficiente en el Estatuto Orgánico para responder esa pregunta.",
         usedAI: false
       });
     }
 
     if (!process.env.GEMINI_API_KEY) {
       return res.json({
-        answer: fallbackAnswer(context),
+        answer: context.slice(0, 1400),
         usedAI: false
       });
     }
@@ -186,52 +160,54 @@ app.post("/api/chat", async (req, res) => {
     const prompt = `
 Eres un chatbot académico especializado únicamente en el Estatuto Orgánico de la Universidad Autónoma de Santo Domingo (UASD).
 
-Reglas obligatorias:
-1. Responde solo con la información que aparece en el contexto proporcionado.
-2. No uses conocimiento externo.
-3. No inventes artículos, funciones, cargos, derechos ni deberes.
-4. Si la pregunta no está relacionada con el Estatuto Orgánico de la UASD, responde exactamente:
-"Esta pregunta no está relacionada con el Estatuto Orgánico de la UASD."
-5. Si el contexto no contiene información suficiente para responder, responde exactamente:
-"No encontré información suficiente en el Estatuto Orgánico para responder esa pregunta."
-6. Corrige redacción y acentos al responder.
-7. No copies texto dañado del PDF si tiene errores; resume con palabras claras.
-8. Responde en español simple, claro y académico.
+REGLAS OBLIGATORIAS:
+1. Responde solo con información que aparezca en el CONTEXTO.
+2. No inventes datos, fechas, derechos, deberes, funciones ni artículos.
+3. Menciona el número de artículo cuando sea útil.
+4. Resume en español claro, formal y fácil de entender.
+5. Si el contexto no responde la pregunta, di: "No encontré información suficiente en el Estatuto Orgánico para responder esa pregunta."
+6. No copies párrafos demasiado largos; explica de forma ordenada.
+7. Corrige errores de acentuación o redacción del texto original si aparecen.
 
-Pregunta del usuario:
+PREGUNTA DEL USUARIO:
 ${question}
 
-Contexto encontrado del Estatuto:
+CONTEXTO DEL ESTATUTO:
 ${context}
 
-Respuesta:
+RESPUESTA:
 `;
 
     const result = await model.generateContent(prompt);
     const response = await result.response;
-    const text = response.text();
+    const answer = response.text();
 
     res.json({
-      answer: text,
+      answer,
       usedAI: true
     });
   } catch (error) {
     console.error("Error al procesar la pregunta:", error);
 
     if (error.status === 429) {
-  return res.status(429).json({
-    error:
-      "Has realizado demasiadas consultas en poco tiempo. Espera unos segundos e inténtalo nuevamente."
-  });
-}
+      return res.status(429).json({
+        answer: "Has realizado demasiadas consultas en poco tiempo. Espera unos segundos e inténtalo nuevamente."
+      });
+    }
 
-res.status(500).json({
-  error: "Ocurrió un error al procesar la pregunta."
-});
+    if (error.status === 403) {
+      return res.status(403).json({
+        answer: "La API key de Gemini no es válida o fue bloqueada. Debes generar una nueva API key."
+      });
+    }
+
+    res.status(500).json({
+      answer: "Ocurrió un error al procesar la pregunta."
+    });
   }
 });
 
-app.listen(PORT, async () => {
-  await loadEstatuto();
+app.listen(PORT, () => {
   console.log(`Servidor iniciado en http://localhost:${PORT}`);
+  console.log(`Artículos cargados: ${articles.length}`);
 });

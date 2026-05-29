@@ -3,45 +3,50 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Chatbot UASD | Estatuto Orgánico</title>
-  <link rel="stylesheet" href="styles.css" />
+  <title>Chatbot Estatuto Orgánico UASD</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <main class="app">
     <section class="hero">
       <div>
-        <span class="badge">Proyecto Final</span>
-        <h1>Chatbot Inteligente UASD</h1>
-        <p>Consulta el Estatuto Orgánico de la Universidad Autónoma de Santo Domingo.</p>
+        <span class="badge">UASD · Estatuto Orgánico</span>
+        <h1>Chatbot 🤖 UASD</h1>
+        <p>Consulta Interactiva Basada en Artículos del Estatuto Orgánico.</p>
       </div>
-      <div class="status-card">
-        <span id="statusDot" class="dot"></span>
-        <p id="statusText">Verificando documento...</p>
-      </div>
+      <button id="clearHistoryBtn">Borrar historial</button>
     </section>
 
-    <section class="layout">
-      <aside class="suggestions">
-        <h2>Preguntas sugeridas</h2>
-        <div id="questionsList" class="questions-list"></div>
-      </aside>
-
-      <section class="chat-panel">
-        <div id="chatBox" class="chat-box">
-          <div class="message bot">
-            <strong>Chatbot UASD</strong>
-            <p>Hola. Escribe una pregunta sobre el Estatuto Orgánico de la UASD o selecciona una pregunta sugerida.</p>
-          </div>
-        </div>
-
-        <form id="chatForm" class="chat-form">
-          <input id="messageInput" type="text" placeholder="Ejemplo: ¿Cuáles son los derechos de los estudiantes?" autocomplete="off" />
-          <button type="submit">Enviar</button>
-        </form>
-      </section>
+    <section class="main-questions">
+      <h2>Preguntas Sugeridas</h2>
+      <div id="mainQuestions" class="question-grid"></div>
     </section>
+
+    <section class="chat-container">
+      <div id="chatBox" class="chat-box"></div>
+      <form id="chatForm" class="chat-form">
+        <input type="text" id="messageInput" placeholder="Escribe tu pregunta sobre el Estatuto Orgánico..." autocomplete="off" />
+        <button type="submit">Enviar</button>
+      </form>
+    </section>
+
+   <section class="all-questions">
+
+  <button id="toggleQuestionsBtn" class="toggle-btn">
+    Mostrar Preguntas Sugeridas
+  </button>
+
+  <div id="questionsContainer" class="hidden-questions">
+
+    <div id="allQuestions" class="copy-list"></div>
+
+  </div>
+
+</section>
+    <footer>
+      <p></strong> Chatbot Inteligente UASD • Desarrollado por Abimael Pérez & Ebenezer Peña © 2026</p>
+    </footer>
   </main>
-
-  <script src="app.js"></script>
+  <script src="script.js"></script>
 </body>
 </html>
